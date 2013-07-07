@@ -1,11 +1,6 @@
 program Project1;
 
 uses
-  madExcept,
-  madLinkDisAsm,
-  madListHardware,
-  madListProcesses,
-  madListModules,
   Forms,
   Unit1 in 'Unit1.pas' {Form1},
   c_crypt in 'c_crypt.pas',
