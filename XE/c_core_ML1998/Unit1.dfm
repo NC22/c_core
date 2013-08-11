@@ -3,7 +3,7 @@ object Form1: TForm1
   Top = 129
   BorderIcons = [biSystemMenu, biMinimize]
   BorderStyle = bsSingle
-  Caption = 'noname ML 1998'
+  Caption = 'ML1998 v1.05'
   ClientHeight = 326
   ClientWidth = 535
   Color = clBtnFace
@@ -17,26 +17,6 @@ object Form1: TForm1
   OnCreate = init
   PixelsPerInch = 96
   TextHeight = 13
-  object Label1: TLabel
-    Left = 8
-    Top = 8
-    Width = 34
-    Height = 13
-    Caption = #1051#1086#1075#1080#1085':'
-    Font.Charset = DEFAULT_CHARSET
-    Font.Color = clWindowText
-    Font.Height = -11
-    Font.Name = 'MS Sans Serif'
-    Font.Style = []
-    ParentFont = False
-  end
-  object Label2: TLabel
-    Left = 152
-    Top = 8
-    Width = 41
-    Height = 13
-    Caption = #1055#1072#1088#1086#1083#1100':'
-  end
   object Label3: TLabel
     Left = 8
     Top = 54
@@ -45,8 +25,8 @@ object Form1: TForm1
     Caption = #1057#1087#1080#1089#1086#1082' '#1089#1077#1088#1074#1077#1088#1086#1074' '#1080#1079' '#1080#1075#1088#1099':'
   end
   object Label4: TLabel
-    Left = 488
-    Top = 0
+    Left = 485
+    Top = 34
     Width = 42
     Height = 13
     Caption = '(c) NC22'
@@ -59,7 +39,7 @@ object Form1: TForm1
   end
   object Label5: TLabel
     Left = 462
-    Top = 54
+    Top = 53
     Width = 65
     Height = 13
     Cursor = crHandPoint
@@ -120,7 +100,7 @@ object Form1: TForm1
   end
   object Button2: TButton
     Left = 400
-    Top = 20
+    Top = 6
     Width = 97
     Height = 25
     Caption = #1054#1073#1085#1086#1074#1080#1090#1100
@@ -129,23 +109,24 @@ object Form1: TForm1
   end
   object Edit1: TEdit
     Left = 8
-    Top = 24
+    Top = 8
     Width = 129
     Height = 21
     TabOrder = 2
-    Text = 'Login'
+    TextHint = #1051#1086#1075#1080#1085
   end
   object Edit2: TEdit
-    Left = 152
-    Top = 24
+    Left = 153
+    Top = 8
     Width = 137
     Height = 21
     PasswordChar = '*'
     TabOrder = 3
+    TextHint = #1055#1072#1088#1086#1083#1100
   end
   object Button1: TButton
     Left = 296
-    Top = 20
+    Top = 6
     Width = 97
     Height = 25
     Caption = #1048#1075#1088#1072#1090#1100
@@ -153,8 +134,8 @@ object Form1: TForm1
     OnClick = Button1Click
   end
   object btn: TBitBtn
-    Left = 504
-    Top = 20
+    Left = 503
+    Top = 6
     Width = 25
     Height = 25
     Glyph.Data = {
@@ -189,11 +170,19 @@ object Form1: TForm1
     TabOrder = 6
     OnClick = btnClick
   end
+  object OfflineMode: TCheckBox
+    Left = 18
+    Top = 35
+    Width = 129
+    Height = 13
+    Caption = #1054#1076#1080#1085#1086#1095#1085#1072#1103' '#1080#1075#1088#1072
+    TabOrder = 7
+  end
   object ImageList: TImageList
     Left = 440
     Top = 104
     Bitmap = {
-      494C010103000400080010001000FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
+      494C010103000400200010001000FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
       0000000000003600000028000000400000001000000001002000000000000010
       0000000000000000000000000000000000000000000000000000000000000000
       0000000000000000000000000000000000000000000000000000000000000000

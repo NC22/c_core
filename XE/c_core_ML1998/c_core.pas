@@ -24,6 +24,11 @@ type
 
   TStringArray = array of string;
 
+  TlaunchInfo = record
+    version: string[32];
+    logic: integer;
+  end;
+
   TauthInfo = record
     GameBuild: integer;
     Download: string[64];
@@ -32,9 +37,9 @@ type
   end;
 
   downloadInfo = record
-    name: string[255];
+    name: string;
     currentsize: integer;
-    hash: string[32];
+    hash: string;
     size: integer;
   end;
 
@@ -57,7 +62,8 @@ type
 
   webOptions = record
     Login: string[255];
-    LVER: string[255];
+    LVER: string[32];
+    GVER: string[32];
     AutoConfig: string[255];
     Reg: string[255];
     Distr: string[255];
@@ -115,6 +121,7 @@ type
     function DeCryptMe(somestring: string; pass: string): string;
     function Explode(Text, Delimiter: string): TStringArray;
     function FindJava: boolean;
+    function GetLibs(BaseDir : string) : string;
     procedure PrivateSetOptions(newOptions: globalOptions);
     procedure SetOptions(newOptions: globalOptions);
     procedure OldLauncherTicket;
@@ -129,6 +136,7 @@ type
       ProcessType: TAbProcessType; ErrorClass: TAbErrorClass;
       ErrorCode: integer);
     procedure SaveOptions;
+    procedure RunProcess(proc, cmd : string);
   protected
     procedure ExecEventDwnProcess(DwnFile: downloadInfo); dynamic;
     procedure ExecEventDwnEnd(DwnFile: downloadInfo); dynamic;
@@ -161,6 +169,7 @@ type
     procedure SaveAuthOptions(fname: string);
     procedure SetDefaultAuthOptions;
     function DownloadFile(fname: string): boolean;
+    function GetLaunchLogic(gVerStr : string) : TlaunchInfo;
     function DownloadFileList(): boolean;
     function DownloadConfig: boolean;
     function Login: boolean;
@@ -183,6 +192,14 @@ begin
 
   PROGMA := PROG;
   VERSION := '1.0';
+
+  { TODO
+
+    Рекурсивное подключение библиотек из подпапки libraries
+    запуск 1.6 -
+      новый параметр для gameOptions - version
+      дополнительные параметры при запуске если 1.6
+  }
 
   PassBase := 65420;
 
@@ -256,12 +273,14 @@ begin
   Options.sysOptions.Depass := '';
 
   Options.webOptions.LVER := '13';
+  Options.webOptions.GVER := '15';
+
   Options.webOptions.Login := 'https://login.minecraft.net/';
   Options.webOptions.Reg := '';
   Options.webOptions.Distr := 'http://s3.amazonaws.com/MinecraftDownload/';
   Options.webOptions.Distr_list :=
     'minecraft.jar|jinput.jar|lwjgl.jar|lwjgl_util.jar|windows_natives.jar';
-  Options.webOptions.AutoConfig := 'http://craft.catface.ru/config/config.ac';
+  Options.webOptions.AutoConfig := ''; { http://craft.catface.ru/config/config.ac }
   Options.webOptions.News := '';
 
 end;
@@ -328,19 +347,93 @@ begin
     end
 end;
 
-procedure TCore.Play;
+function TCore.GetLibs(BaseDir : string) : string;
 var
-  Params, Launch, GameFiles: AnsiString;
-  TmpOptions: globalOptions;
-  PlayOnline: boolean;
-  // debug : string;
+  SR: TSearchRec;
+  isDir : boolean;
+  dirItems : string;
 begin
 
-  PlayOnline := true;
+  result := '';
+
+  if not DirectoryExists(BaseDir) then exit;
+
+  if FindFirst(BaseDir + '*.*', faAnyFile, SR) = 0 then repeat
+
+    if (SR.Name = '..') or (SR.Name = '.') then continue;
+
+    isDir := SR.Attr = (SysUtils.faDirectory and SR.Attr);
+
+    if isDir then begin
+
+      dirItems := '';
+      dirItems := self.GetLibs(BaseDir + SR.Name + '\');
+      if Length(dirItems) = 0 then continue;
+
+      if Length(result) <> 0 then result := result + ';';
+       result := result + dirItems;
+
+    end
+    else if ExtractFileExt(SR.Name) = '.jar' then begin
+
+      if Length(result) <> 0 then result := result + ';';
+      result := result + BaseDir + SR.Name;
+
+    end;
+
+  until FindNext(SR) <> 0;
+  FindClose(SR);
+
+end;
+
+procedure TCore.RunProcess(proc, cmd : string);
+var
+  Rlst: LongBool;
+  StartUpInfo: TStartUpInfo;
+  ProcessInfo: TProcessInformation;
+  Error: integer;
+  procP : PChar;
+begin
+
+  if Length(proc) = 0 then procP := nil
+  else procP := PChar(proc);
+
+  FillChar(StartUpInfo, SizeOf(TStartUpInfo), 0);
+
+  with StartUpInfo do
+  begin
+    cb := SizeOf(TStartUpInfo);
+    dwFlags := STARTF_USESHOWWINDOW or STARTF_FORCEONFEEDBACK;
+    wShowWindow := SW_SHOWNORMAL;
+  end;
+
+  Rlst := CreateProcess(procP, PChar(cmd), nil, nil, false, NORMAL_PRIORITY_CLASS, nil, nil, StartUpInfo, ProcessInfo);
+  if Rlst then
+
+  with ProcessInfo do begin
+
+    WaitForInputIdle(hProcess, INFINITE);
+    CloseHandle(hThread);
+    CloseHandle(hProcess);
+
+  end
+
+else Error := GetLastError;
+
+end;
+
+procedure TCore.Play;
+var
+  TmpOptions: globalOptions;
+  PlayOnline: boolean;
+  LaunchOptions : TlaunchInfo;
+  MineClass, GameFiles, lib, Params, Launch : string;
+begin
+
+  lib := ''; PlayOnline := true; GameFiles := '';
 
   TmpOptions := PrivateGetOptions;
-
-  // debug := TmpOptions.gOptions.MineHash + ' | '+TmpOptions.gOptions.Game;
+  LaunchOptions := self.GetLaunchLogic(TmpOptions.webOptions.GVER);
 
   if (Length(AuthInfo.RealLogin) = 0) or (Length(AuthInfo.SessionId) = 0) then
     PlayOnline := false;
@@ -353,20 +446,41 @@ begin
   if Length(TmpOptions.pOptions.Login) = 0 then
     TmpOptions.pOptions.Login := 'Default';
 
-  if not PlayOnline then
-    Params := '"' + TmpOptions.pOptions.Login + '"'
-  else
-    Params := '"' + AuthInfo.RealLogin + '" "' + AuthInfo.SessionId + '"';
+  if LaunchOptions.logic = 16 then begin
 
-  GameFiles := TmpOptions.gOptions.Game + 'bin\minecraft.jar;';
-  GameFiles := GameFiles + TmpOptions.gOptions.Game + 'bin\lwjgl.jar;';
-  GameFiles := GameFiles + TmpOptions.gOptions.Game + 'bin\lwjgl_util.jar;';
-  GameFiles := GameFiles + TmpOptions.gOptions.Game + 'bin\jinput.jar;';
+    MineClass := 'net.minecraft.client.main.Main';
+
+    if not PlayOnline then Params := '--demo '
+    else
+
+      Params := '--username "' + AuthInfo.RealLogin + '" --session "' + AuthInfo.SessionId + '" ';
+
+      Params := Params + '--version "' + LaunchOptions.version + '" --assetsDir "' + TmpOptions.gOptions.Game + 'assets"';
+
+    if DirectoryExists(string(TmpOptions.gOptions.Game + 'libraries\')) then
+
+      lib := self.GetLibs(string(TmpOptions.gOptions.Game + 'libraries\'));
+
+  end
+  else begin
+
+    MineClass := 'net.minecraft.client.Minecraft';
+
+    if not PlayOnline then Params := '"' + TmpOptions.pOptions.Login + '"'
+    else Params := '"' + AuthInfo.RealLogin + '" "' + AuthInfo.SessionId + '"';
+
+    GameFiles := string(TmpOptions.gOptions.Game) + 'bin\lwjgl.jar;';
+    GameFiles := GameFiles + string(TmpOptions.gOptions.Game) + 'bin\lwjgl_util.jar;';
+    GameFiles := GameFiles + string(TmpOptions.gOptions.Game) + 'bin\jinput.jar;';
+
+  end;
+
+  GameFiles := GameFiles + TmpOptions.gOptions.Game + 'bin\minecraft.jar;' + lib;
 
   Launch := ' -Xms' + TmpOptions.gOptions.MinMem + ' -Xmx' +
     TmpOptions.gOptions.MaxMem + ' -Djava.library.path="' +
     TmpOptions.gOptions.Game + 'bin\natives"' + ' -cp "' + GameFiles + '"' +
-    ' net.minecraft.client.Minecraft ' + Params;
+    ' ' + MineClass + ' ' + Params;
 
   if Length(TmpOptions.gOptions.Java) = 0 then
   begin
@@ -376,7 +490,8 @@ begin
       exit;
   end;
 
-  WinExec(PAnsiChar(TmpOptions.gOptions.Java + Launch), SW_SHOW);
+  RunProcess(string(TmpOptions.gOptions.Java), Launch);
+  //WinExec(PAnsiChar('java.exe' + AnsiString(Launch)), SW_SHOW);
 
 end;
 
@@ -460,9 +575,12 @@ var
   ResultString, cur_str: string;
   TmpOptions: globalOptions;
   counter, len, lines_found: smallint;
+  LaunchOptions : TlaunchInfo;
 begin
 
   TmpOptions := PrivateGetOptions;
+  LaunchOptions := self.GetLaunchLogic(TmpOptions.webOptions.GVER);
+
   result := false;
   ResultString := '';
 
@@ -516,8 +634,12 @@ begin
           AuthInfo.Download := cur_str
         else if lines_found = 3 then
           AuthInfo.RealLogin := cur_str
-        else if lines_found = 4 then
-          AuthInfo.SessionId := cur_str;
+        else if lines_found = 4 then begin
+
+          AuthInfo.SessionId := '';
+          if LaunchOptions.logic = 16 then AuthInfo.SessionId := 'token:';
+          AuthInfo.SessionId := AuthInfo.SessionId + cur_str;
+        end;
 
         cur_str := '';
         inc(counter)
@@ -571,7 +693,7 @@ begin
 
     HTTPmech.Get(string(PrivateGetOptions.webOptions.Distr) + fname, Strm);
 
-    SetString(result, PChar(Strm.memory), Strm.size);
+    SetString(result, PAnsiChar(Strm.memory), Strm.size);
 
   except
     on exception do
@@ -655,6 +777,7 @@ begin
       Options.webOptions.Reg := DownloadOptions.webOptions.Reg;
 
       Options.webOptions.LVER := DownloadOptions.webOptions.LVER;
+      Options.webOptions.GVER := DownloadOptions.webOptions.GVER;
 
       result := true;
 
@@ -707,10 +830,7 @@ begin
 
   dirBin := TmpOptions.gOptions.Game + 'bin\';
 
-  if (not FileExists(dirBin + 'jinput.jar')) or
-    (not FileExists(dirBin + 'lwjgl.jar')) or
-    (not FileExists(dirBin + 'lwjgl_util.jar')) or
-    (not FileExists(dirBin + 'minecraft.jar')) or (not IsNativesWinInstalled)
+  if (not FileExists(dirBin + 'minecraft.jar')) or (not IsNativesWinInstalled)
   then
     result := false
   else
@@ -738,6 +858,25 @@ begin
   else
     result := true;
 
+end;
+
+function TCore.GetLaunchLogic(gVerStr : string) : TlaunchInfo;
+var
+  gVerArr : TStringArray;
+  gLogicInt : integer;
+begin
+    SetLength(gVerArr, 0);
+
+    result.version := '';
+    result.logic := 15;
+
+   gVerArr := Explode(gVerStr, '|');
+
+   if Length(gVerArr) = 0  then exit;
+   if not TryStrToInt(gVerArr[0], gLogicInt) then exit;
+
+   result.logic := gLogicInt;
+   result.version := gVerArr[1];
 end;
 
 function TCore.DownloadFileList(): boolean;
@@ -846,7 +985,7 @@ begin
 
   if (not zip) and (fname <> 'windows_natives.jar') and
     (not NeedToFileUpdate(TmpOptions.gOptions.Game + 'bin\' + fname,
-    Download.hash)) then
+   Download.hash)) then
     exit;
 
   if (Download.hash <> 'none') and (zip) and
@@ -1125,6 +1264,7 @@ begin
   PrefabSet.webOptions.Distr_list := Options.webOptions.Distr_list;
   PrefabSet.webOptions.Reg := Options.webOptions.Reg;
   PrefabSet.webOptions.LVER := Options.webOptions.LVER;
+  PrefabSet.webOptions.GVER := Options.webOptions.GVER;
 
   AssignFile(FOptions, fname);
   Rewrite(FOptions);
@@ -1186,7 +1326,7 @@ begin
   Options.webOptions.Distr_list := PrefabSet.webOptions.Distr_list;
   Options.webOptions.Reg := PrefabSet.webOptions.Reg;
   Options.webOptions.LVER := PrefabSet.webOptions.LVER;
-
+  Options.webOptions.GVER := PrefabSet.webOptions.GVER;
 end;
 
 procedure TCore.SaveOptions;
@@ -1228,6 +1368,7 @@ begin
     decOptions.webOptions.Distr_list := Decrypt(Options.webOptions.Distr_list,
       tempPass);
     decOptions.webOptions.LVER := Decrypt(Options.webOptions.LVER, tempPass);
+    decOptions.webOptions.GVER := Decrypt(Options.webOptions.GVER, tempPass);
     decOptions.gOptions.MineHash := Decrypt(Options.gOptions.MineHash,
       tempPass);
     decOptions.sysOptions.Depass := IntToStr(tempPass);
@@ -1257,6 +1398,7 @@ begin
     decOptions.webOptions.Distr := 'hidden';
     decOptions.webOptions.Distr_list := 'hidden';
     decOptions.webOptions.LVER := 'hidden';
+    decOptions.webOptions.GVER := 'hidden';
     decOptions.gOptions.MineHash := 'hidden';
     decOptions.sysOptions.Depass := 'hidden';
 
@@ -1324,6 +1466,7 @@ begin
     newOptions.webOptions.Distr := Options.webOptions.Distr;
     newOptions.webOptions.Distr_list := Options.webOptions.Distr_list;
     newOptions.webOptions.LVER := Options.webOptions.LVER;
+    newOptions.webOptions.GVER := Options.webOptions.GVER;
     newOptions.gOptions.MineHash := Options.gOptions.MineHash;
     newOptions.sysOptions.Depass := Options.sysOptions.Depass;
 
@@ -1367,6 +1510,8 @@ begin
       newOptions.webOptions.Distr_list :=
         Encrypt(newOptions.webOptions.Distr_list, tempPass);
       newOptions.webOptions.LVER := Encrypt(newOptions.webOptions.LVER,
+        tempPass);
+      newOptions.webOptions.GVER := Encrypt(newOptions.webOptions.GVER,
         tempPass);
       newOptions.gOptions.MineHash := Encrypt(newOptions.gOptions.MineHash,
         tempPass);

@@ -67,12 +67,11 @@ type
     Edit2: TEdit;
     Button1: TButton;
     StatusBar1: TStatusBar;
-    Label1: TLabel;
-    Label2: TLabel;
     Label3: TLabel;
     Label4: TLabel;
     btn: TBitBtn;
     Label5: TLabel;
+    OfflineMode: TCheckBox;
 
     procedure init(Sender: TObject);
     procedure closeall(Sender: TObject; var Action: TCloseAction);
@@ -225,7 +224,7 @@ end;
 
 procedure TForm1.OldVer();
 begin
-  StatusBar1.SimpleText := 'Версия клиент не соответствует версии требуемой сервером';
+  StatusBar1.SimpleText := 'Версия клиента не соответствует версии требуемой сервером';
 end;
 
 procedure TForm1.OldLauncher();
@@ -371,7 +370,7 @@ begin
 
 { Launcher }
 
- Core := TCore.Create('ML1998','TWEBMCR'); // Настройки по умолчанию вшиты в c_core
+ Core := TCore.Create('ML1998','TWEBMCR'); // инициализация и автозагрузка сущ. настроек, если уже был запуск
 
  Core.OnUnarchItem      := Unzip;       // Разархивирования zip архива
  Core.OnDownloadProcess := Downloading; // Процесс загрузки файла
@@ -386,6 +385,23 @@ begin
  // Загружаем необходимую информацию из ядра
 
  getOptions := Core.currentOptions;
+
+ // Перезаписываем основные настройки, индивидуально для лаунчера
+
+ getOptions.sysOptions.Forbit := false;
+ getOptions.sysOptions.Depass := '';
+
+ getOptions.webOptions.LVER := '14';
+ getOptions.webOptions.GVER := '15|1.6.1';
+ getOptions.webOptions.Login := 'http://craft.catface.ru/MineCraft/auth.php';
+ getOptions.webOptions.Reg := 'http://craft.catface.ru/index.php?mode=register';
+ getOptions.webOptions.Distr := 'http://craft.catface.ru/MineCraft/MinecraftDownload/';
+ getOptions.webOptions.Distr_list := 'client.zip'; // несколько файлов чере разделитель |
+ getOptions.webOptions.AutoConfig := ''; { http://craft.catface.ru/config/config.ac }
+ getOptions.webOptions.News := 'http://craft.catface.ru/MineCraft/news.php';
+
+ Core.currentOptions := getOptions;
+
  Edit1.Text := getOptions.pOptions.Login;
  Edit2.Text := getOptions.pOptions.Password;
 
@@ -548,7 +564,17 @@ begin
 
  Core.currentOptions := newOptions;
 
- if Core.Login then begin
+ self.Repaint;
+
+  if OfflineMode.Checked then begin
+
+      if not Core.IsGameWinInstalled and not Core.DownloadFileList() then exit;
+
+  Core.Play;
+  Self.Close;
+
+  end
+  else if Core.Login then begin
    if Core.DownloadFileList() then begin
       Core.Play;
       Self.Close;
